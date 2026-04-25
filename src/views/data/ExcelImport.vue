@@ -1,18 +1,15 @@
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
+import { uploadExcel, downloadTemplate, getImportHistory } from '../../api/data'
 
 const uploadRef = ref(null)
 const uploadProgress = ref(0)
 const uploading = ref(false)
 const importType = ref('balance')
 const importMode = ref('append')
-const importHistory = ref([
-  { id: 1, fileName: '资产负债表_2026Q1.xlsx', type: '资产负债表', mode: '追加', records: 156, status: 'success', operator: '张三', time: '2026-04-20 14:30:00' },
-  { id: 2, fileName: '利润表_2026Q1.xlsx', type: '利润表', mode: '覆盖', records: 89, status: 'success', operator: '张三', time: '2026-04-20 14:25:00' },
-  { id: 3, fileName: '现金流量表_2026Q1.xlsx', type: '现金流量表', mode: '追加', records: 0, status: 'failed', operator: '李四', time: '2026-04-19 10:15:00' }
-])
+const importHistory = ref([])
 
 const typeOptions = [
   { label: '资产负债表', value: 'balance' },
@@ -25,8 +22,33 @@ const modeOptions = [
   { label: '覆盖指定期间', value: 'overwrite' }
 ]
 
-function handleDownloadTemplate(type) {
-  ElMessage.success(`正在下载${typeOptions.find(t => t.value === type)?.label || ''}模板`)
+onMounted(() => {
+  fetchImportHistory()
+})
+
+async function fetchImportHistory() {
+  try {
+    const res = await getImportHistory()
+    importHistory.value = res.data || res || []
+  } catch (e) {
+    console.error('获取导入历史失败:', e)
+  }
+}
+
+async function handleDownloadTemplate(type) {
+  try {
+    const res = await downloadTemplate(type)
+    const blob = new Blob([res], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${typeOptions.find(t => t.value === type)?.label || ''}模板.xlsx`
+    link.click()
+    window.URL.revokeObjectURL(url)
+    ElMessage.success('模板下载成功')
+  } catch (e) {
+    ElMessage.error('模板下载失败')
+  }
 }
 
 function beforeUpload(file) {
@@ -43,20 +65,25 @@ function beforeUpload(file) {
   return true
 }
 
-function handleUploadSuccess(response) {
-  uploading.value = false
+async function handleCustomUpload(options) {
+  uploading.value = true
   uploadProgress.value = 0
-  ElMessage.success('文件导入成功')
-}
-
-function handleUploadError() {
-  uploading.value = false
-  uploadProgress.value = 0
-  ElMessage.error('文件导入失败，请检查文件格式')
-}
-
-function handleUploadProgress(event) {
-  uploadProgress.value = Math.round((event.loaded / event.total) * 100)
+  const formData = new FormData()
+  formData.append('file', options.file)
+  formData.append('type', importType.value)
+  formData.append('mode', importMode.value)
+  try {
+    await uploadExcel(formData, (event) => {
+      uploadProgress.value = Math.round((event.loaded / event.total) * 100)
+    })
+    ElMessage.success('文件导入成功')
+    fetchImportHistory()
+  } catch (e) {
+    ElMessage.error('文件导入失败，请检查文件格式')
+  } finally {
+    uploading.value = false
+    uploadProgress.value = 0
+  }
 }
 
 const statusTagType = { success: 'success', failed: 'danger' }
@@ -106,11 +133,8 @@ const statusLabel = { success: '成功', failed: '失败' }
             <el-form-item label="选择文件">
               <el-upload
                 ref="uploadRef"
-                action="/api/data/import/excel"
+                :http-request="handleCustomUpload"
                 :before-upload="beforeUpload"
-                :on-success="handleUploadSuccess"
-                :on-error="handleUploadError"
-                :on-progress="handleUploadProgress"
                 :show-file-list="false"
                 accept=".xlsx,.xls"
                 drag
@@ -140,8 +164,8 @@ const statusLabel = { success: '成功', failed: '失败' }
             <el-tag :type="statusTagType[row.status]" size="small">{{ statusLabel[row.status] }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="operator" label="操作人" width="100" />
-        <el-table-column prop="time" label="操作时间" width="180" />
+        <el-table-column prop="operatorName" label="操作人" width="100" />
+        <el-table-column prop="createdAt" label="操作时间" width="180" />
       </el-table>
     </div>
   </div>

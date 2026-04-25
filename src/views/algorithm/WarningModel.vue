@@ -1,14 +1,10 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { getWarningRecords, getWarningSummary, ignoreWarning } from '../../api/algorithm'
 
 const loading = ref(false)
-const warningRecords = ref([
-  { id: 1, indicator: '现金比率', indicatorCode: 'R003', level: 'red', currentValue: 0.15, yellowThreshold: '< 0.3', orangeThreshold: '< 0.25', redThreshold: '< 0.2', trend: '持续下降(3期)', suggestion: '现金比率严重不足，需立即加强现金管理，考虑短期融资方案', time: '2026-04-24 09:30', status: 'active' },
-  { id: 2, indicator: '速动比率', indicatorCode: 'R002', level: 'orange', currentValue: 0.92, yellowThreshold: '< 1.2', orangeThreshold: '< 1.0', redThreshold: '< 0.8', trend: '持续下降(2期)', suggestion: '速动比率偏低，建议减少存货占比或增加速动资产', time: '2026-04-24 09:30', status: 'active' },
-  { id: 3, indicator: '流动比率', indicatorCode: 'R001', level: 'yellow', currentValue: 1.85, yellowThreshold: '< 2.0', orangeThreshold: '< 1.5', redThreshold: '< 1.0', trend: '轻微下降', suggestion: '建议优化短期偿债能力，适当增加流动资产或减少短期负债', time: '2026-04-24 09:30', status: 'active' },
-  { id: 4, indicator: '资产负债率', indicatorCode: 'R004', level: 'yellow', currentValue: 45.3, yellowThreshold: '> 50%', orangeThreshold: '> 60%', redThreshold: '> 70%', trend: '缓慢上升', suggestion: '资产负债率接近警戒线，建议控制新增负债', time: '2026-04-23 09:30', status: 'ignored' }
-])
+const warningRecords = ref([])
 
 const filterLevel = ref('')
 const filterStatus = ref('')
@@ -18,16 +14,50 @@ const levelLabel = { yellow: '黄色', orange: '橙色', red: '红色' }
 const statusLabel = { active: '生效', ignored: '已忽略' }
 const statusTagType = { active: 'danger', ignored: 'info' }
 
-function handleIgnore(row) {
-  row.status = 'ignored'
-  ElMessage.success('已忽略该预警')
+const summary = ref({
+  red: 0,
+  orange: 0,
+  yellow: 0
+})
+
+const filteredRecords = ref([])
+
+async function fetchWarningRecords() {
+  loading.value = true
+  try {
+    const res = await getWarningRecords({ level: filterLevel.value, status: filterStatus.value })
+    warningRecords.value = res.data || []
+    filteredRecords.value = warningRecords.value
+  } catch (err) {
+    ElMessage.error('获取预警记录失败: ' + (err.message || '未知错误'))
+  } finally {
+    loading.value = false
+  }
+}
+
+async function fetchWarningSummary() {
+  try {
+    const res = await getWarningSummary()
+    summary.value = res.data || { red: 0, orange: 0, yellow: 0 }
+  } catch (err) {
+    ElMessage.error('获取预警摘要失败: ' + (err.message || '未知错误'))
+  }
+}
+
+async function handleIgnore(row) {
+  try {
+    await ignoreWarning(row.id)
+    ElMessage.success('已忽略该预警')
+    await fetchWarningRecords()
+    await fetchWarningSummary()
+  } catch (err) {
+    ElMessage.error('忽略预警失败: ' + (err.message || '未知错误'))
+  }
 }
 
 function handleViewDetail(row) {
   ElMessage.info(`查看预警详情: ${row.indicator}`)
 }
-
-const filteredRecords = ref(warningRecords)
 
 function handleFilter() {
   let result = [...warningRecords.value]
@@ -40,10 +70,9 @@ function handleFilter() {
   filteredRecords.value = result
 }
 
-const summary = ref({
-  red: warningRecords.value.filter(r => r.level === 'red' && r.status === 'active').length,
-  orange: warningRecords.value.filter(r => r.level === 'orange' && r.status === 'active').length,
-  yellow: warningRecords.value.filter(r => r.level === 'yellow' && r.status === 'active').length
+onMounted(() => {
+  fetchWarningRecords()
+  fetchWarningSummary()
 })
 </script>
 

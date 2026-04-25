@@ -1,26 +1,37 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import { ElMessage } from 'element-plus'
+import { getBenchmarkData, uploadIndustryData, downloadBenchmarkTemplate } from '../../api/report'
 
+const loading = ref(false)
 const radarChartRef = ref(null)
-const benchmarkData = ref([
-  { indicator: '流动比率', enterprise: 1.85, industryAvg: 2.1, industryBest: 3.2, deviation: 88.1 },
-  { indicator: '速动比率', enterprise: 0.92, industryAvg: 1.15, industryBest: 2.0, deviation: 80.0 },
-  { indicator: '资产负债率(%)', enterprise: 45.3, industryAvg: 42.0, industryBest: 30.0, deviation: 107.9 },
-  { indicator: '销售净利率(%)', enterprise: 15.7, industryAvg: 12.5, industryBest: 22.0, deviation: 125.6 },
-  { indicator: '总资产周转率', enterprise: 0.85, industryAvg: 0.9, industryBest: 1.5, deviation: 94.4 },
-  { indicator: 'ROE(%)', enterprise: 15.6, industryAvg: 14.0, industryBest: 25.0, deviation: 111.4 }
-])
+const benchmarkData = ref([])
 
 const uploadDialogVisible = ref(false)
+const uploadFile = ref(null)
 
 onMounted(() => {
-  initRadarChart()
+  fetchBenchmarkData()
 })
 
+async function fetchBenchmarkData() {
+  loading.value = true
+  try {
+    const res = await getBenchmarkData()
+    benchmarkData.value = (res.data || res || [])
+    await nextTick()
+    initRadarChart()
+  } catch (error) {
+    ElMessage.error('获取对标数据失败')
+    console.error(error)
+  } finally {
+    loading.value = false
+  }
+}
+
 function initRadarChart() {
-  if (!radarChartRef.value) return
+  if (!radarChartRef.value || !benchmarkData.value.length) return
   const chart = echarts.init(radarChartRef.value)
   const indicators = benchmarkData.value.map(d => ({
     name: d.indicator,
@@ -53,13 +64,44 @@ function handleUpload() {
   uploadDialogVisible.value = true
 }
 
-function handleDownloadTemplate() {
-  ElMessage.success('行业数据模板下载成功')
+async function handleDownloadTemplate() {
+  try {
+    const res = await downloadBenchmarkTemplate()
+    const blob = new Blob([res.data || res], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = '行业数据模板.xlsx'
+    link.click()
+    window.URL.revokeObjectURL(url)
+    ElMessage.success('行业数据模板下载成功')
+  } catch (error) {
+    ElMessage.error('下载模板失败')
+    console.error(error)
+  }
 }
 
-function handleUploadSubmit() {
-  ElMessage.success('行业数据上传成功')
-  uploadDialogVisible.value = false
+async function handleUploadSubmit() {
+  if (!uploadFile.value) {
+    ElMessage.warning('请选择要上传的文件')
+    return
+  }
+  const formData = new FormData()
+  formData.append('file', uploadFile.value)
+  try {
+    await uploadIndustryData(formData)
+    ElMessage.success('行业数据上传成功')
+    uploadDialogVisible.value = false
+    uploadFile.value = null
+    fetchBenchmarkData()
+  } catch (error) {
+    ElMessage.error('行业数据上传失败')
+    console.error(error)
+  }
+}
+
+function handleFileChange(file) {
+  uploadFile.value = file.raw
 }
 </script>
 
@@ -115,7 +157,7 @@ function handleUploadSubmit() {
     </el-row>
 
     <el-dialog v-model="uploadDialogVisible" title="上传行业基准数据" width="480px">
-      <el-upload drag action="/api/report/benchmark/upload" accept=".xlsx,.xls" :limit="1">
+      <el-upload drag action="" accept=".xlsx,.xls" :limit="1" :auto-upload="false" :on-change="handleFileChange">
         <div style="text-align: center; padding: 20px;">
           <el-icon size="40" color="#c0c4cc"><UploadFilled /></el-icon>
           <p>将文件拖到此处，或<em style="color: #409eff;">点击上传</em></p>

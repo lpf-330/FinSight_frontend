@@ -1,15 +1,10 @@
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { getSubjectMappings, createSubjectMapping, updateSubjectMapping, deleteSubjectMapping } from '../../api/data'
 
 const loading = ref(false)
-const mappings = ref([
-  { id: 1, k8Code: '1001', k8Name: '库存现金', targetCode: 'A001', targetName: '货币资金-现金', category: '资产类', enabled: true },
-  { id: 2, k8Code: '1002', k8Name: '银行存款', targetCode: 'A002', targetName: '货币资金-银行存款', category: '资产类', enabled: true },
-  { id: 3, k8Code: '1122', k8Name: '应收账款', targetCode: 'A010', targetName: '应收账款', category: '资产类', enabled: true },
-  { id: 4, k8Code: '2202', k8Name: '应付账款', targetCode: 'L005', targetName: '应付账款', category: '负债类', enabled: true },
-  { id: 5, k8Code: '6001', k8Name: '主营业务收入', targetCode: 'R001', targetName: '营业收入', category: '损益类', enabled: true }
-])
+const mappings = ref([])
 
 const dialogVisible = ref(false)
 const dialogTitle = ref('新增映射')
@@ -25,6 +20,22 @@ const mappingForm = reactive({
 
 const categoryOptions = ['资产类', '负债类', '所有者权益类', '损益类', '成本类']
 
+onMounted(() => {
+  fetchMappings()
+})
+
+async function fetchMappings() {
+  loading.value = true
+  try {
+    const res = await getSubjectMappings()
+    mappings.value = res.data || res || []
+  } catch (e) {
+    console.error('获取科目映射失败:', e)
+  } finally {
+    loading.value = false
+  }
+}
+
 function handleAdd() {
   dialogTitle.value = '新增映射'
   Object.assign(mappingForm, { id: null, k8Code: '', k8Name: '', targetCode: '', targetName: '', category: '资产类', enabled: true })
@@ -37,22 +48,34 @@ function handleEdit(row) {
   dialogVisible.value = true
 }
 
-function handleDelete(row) {
-  ElMessageBox.confirm(`确认删除映射"${row.k8Name}"？`, '提示', { type: 'warning' })
-    .then(() => {
-      mappings.value = mappings.value.filter(m => m.id !== row.id)
-      ElMessage.success('删除成功')
-    })
-    .catch(() => {})
+async function handleDelete(row) {
+  try {
+    await ElMessageBox.confirm(`确认删除映射"${row.k8Name}"？`, '提示', { type: 'warning' })
+    await deleteSubjectMapping(row.id)
+    ElMessage.success('删除成功')
+    fetchMappings()
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error(e.message || '删除失败')
+  }
 }
 
-function handleSave() {
+async function handleSave() {
   if (!mappingForm.k8Code || !mappingForm.targetCode) {
     ElMessage.warning('请填写K8科目编码和目标科目编码')
     return
   }
-  ElMessage.success('保存成功')
-  dialogVisible.value = false
+  try {
+    if (mappingForm.id) {
+      await updateSubjectMapping(mappingForm.id, { ...mappingForm })
+    } else {
+      await createSubjectMapping({ ...mappingForm })
+    }
+    ElMessage.success('保存成功')
+    dialogVisible.value = false
+    fetchMappings()
+  } catch (e) {
+    ElMessage.error(e.message || '保存失败')
+  }
 }
 
 function handleBatchImport() {

@@ -1,23 +1,13 @@
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { getUsers, createUser, updateUser, deleteUser, resetPassword, getRoles } from '../../api/system'
 
 const activeTab = ref('user')
 const loading = ref(false)
 
-const users = ref([
-  { id: 1, username: 'admin', name: '系统管理员', department: '信息部', role: '系统管理员', status: 'active', lastLogin: '2026-04-24 08:30', createTime: '2026-01-01' },
-  { id: 2, username: 'zhangsan', name: '张三', department: '财务部', role: '财务分析人员', status: 'active', lastLogin: '2026-04-24 09:15', createTime: '2026-01-15' },
-  { id: 3, username: 'lisi', name: '李四', department: '财务部', role: '财务分析人员', status: 'active', lastLogin: '2026-04-23 16:20', createTime: '2026-02-01' },
-  { id: 4, username: 'wangwu', name: '王五', department: '总经理办公室', role: '管理层', status: 'active', lastLogin: '2026-04-22 10:00', createTime: '2026-02-10' },
-  { id: 5, username: 'zhaoliu', name: '赵六', department: '财务部', role: '财务分析人员', status: 'disabled', lastLogin: '2026-03-15 14:30', createTime: '2026-03-01' }
-])
-
-const roles = ref([
-  { id: 1, name: '系统管理员', code: 'ADMIN', description: '拥有所有功能权限', userCount: 1, permissions: ['全部权限'] },
-  { id: 2, name: '财务分析人员', code: 'ANALYST', description: '数据导入、算法配置、报告生成', userCount: 2, permissions: ['数据接入', '算法引擎', '配置管理', '可视化报表'] },
-  { id: 3, name: '管理层', code: 'MANAGER', description: '查看仪表盘、报告和预警', userCount: 1, permissions: ['仪表盘', '可视化报表(只读)', '预警信息(只读)'] }
-])
+const users = ref([])
+const roles = ref([])
 
 const userDialogVisible = ref(false)
 const userDialogTitle = ref('新增用户')
@@ -30,9 +20,38 @@ const userForm = reactive({
   status: 'active'
 })
 
-const roleOptions = ['系统管理员', '财务分析人员', '管理层']
+const roleOptions = ref([])
 const statusLabel = { active: '正常', disabled: '禁用' }
 const statusTagType = { active: 'success', disabled: 'info' }
+
+onMounted(() => {
+  fetchUsers()
+  fetchRoles()
+})
+
+async function fetchUsers() {
+  loading.value = true
+  try {
+    const res = await getUsers()
+    users.value = res.data || res || []
+  } catch (error) {
+    ElMessage.error('获取用户列表失败')
+    console.error(error)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function fetchRoles() {
+  try {
+    const res = await getRoles()
+    roles.value = res.data || res || []
+    roleOptions.value = roles.value.map(r => r.name)
+  } catch (error) {
+    ElMessage.error('获取角色列表失败')
+    console.error(error)
+  }
+}
 
 function handleAddUser() {
   userDialogTitle.value = '新增用户'
@@ -52,26 +71,49 @@ function handleDeleteUser(row) {
     return
   }
   ElMessageBox.confirm(`确认删除用户"${row.name}"？`, '提示', { type: 'warning' })
-    .then(() => {
-      users.value = users.value.filter(u => u.id !== row.id)
-      ElMessage.success('删除成功')
+    .then(async () => {
+      try {
+        await deleteUser(row.id)
+        ElMessage.success('删除成功')
+        fetchUsers()
+      } catch (error) {
+        ElMessage.error('删除用户失败')
+        console.error(error)
+      }
     })
     .catch(() => {})
 }
 
-function handleSaveUser() {
+async function handleSaveUser() {
   if (!userForm.username || !userForm.name || !userForm.role) {
     ElMessage.warning('请填写完整信息')
     return
   }
-  ElMessage.success('保存成功')
-  userDialogVisible.value = false
+  try {
+    if (userForm.id) {
+      await updateUser(userForm.id, { ...userForm })
+    } else {
+      await createUser({ ...userForm })
+    }
+    ElMessage.success('保存成功')
+    userDialogVisible.value = false
+    fetchUsers()
+  } catch (error) {
+    ElMessage.error('保存用户失败')
+    console.error(error)
+  }
 }
 
 function handleResetPassword(row) {
   ElMessageBox.confirm(`确认重置用户"${row.name}"的密码？`, '提示', { type: 'warning' })
-    .then(() => {
-      ElMessage.success('密码已重置为初始密码')
+    .then(async () => {
+      try {
+        await resetPassword(row.id)
+        ElMessage.success('密码已重置为初始密码')
+      } catch (error) {
+        ElMessage.error('重置密码失败')
+        console.error(error)
+      }
     })
     .catch(() => {})
 }

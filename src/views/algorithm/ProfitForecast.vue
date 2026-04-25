@@ -1,8 +1,8 @@
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
-import { onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { calcProfitForecast } from '../../api/algorithm'
 
 const forecastForm = reactive({
   baseRevenue: 2458.6,
@@ -13,33 +13,50 @@ const forecastForm = reactive({
   periods: 4
 })
 
-const calculated = ref(true)
-const forecastResults = ref([
-  { period: '2026-Q1', revenue: 2458.6, cost: 1659.6, expense: 368.8, profitBeforeTax: 430.2, tax: 107.6, netProfit: 322.7 },
-  { period: '2026-Q2', revenue: 2655.3, cost: 1792.3, expense: 398.3, profitBeforeTax: 464.7, tax: 116.2, netProfit: 348.5 },
-  { period: '2026-Q3', revenue: 2867.7, cost: 1935.7, expense: 430.2, profitBeforeTax: 501.9, tax: 125.5, netProfit: 376.4 },
-  { period: '2026-Q4', revenue: 3097.2, cost: 2090.6, expense: 464.6, profitBeforeTax: 542.0, tax: 135.5, netProfit: 406.5 }
-])
+const calculated = ref(false)
+const calculating = ref(false)
+const forecastResults = ref([])
 
 const chartRef = ref(null)
+let chartInstance = null
 
-function handleCalculate() {
-  calculated.value = true
-  ElMessage.success('损益预测计算完成')
+async function handleCalculate() {
+  calculating.value = true
+  try {
+    const res = await calcProfitForecast({
+      baseRevenue: forecastForm.baseRevenue,
+      revenueGrowthRate: forecastForm.revenueGrowthRate,
+      costRate: forecastForm.costRate,
+      expenseRate: forecastForm.expenseRate,
+      taxRate: forecastForm.taxRate,
+      periods: forecastForm.periods
+    })
+    forecastResults.value = res.data || []
+    calculated.value = true
+    ElMessage.success('损益预测计算完成')
+    await nextTick()
+    updateChart()
+  } catch (err) {
+    ElMessage.error('损益预测计算失败: ' + (err.message || '未知错误'))
+  } finally {
+    calculating.value = false
+  }
 }
 
 function handleSave() {
   ElMessage.success('预测方案已保存')
 }
 
-onMounted(() => {
-  if (calculated.value) initChart()
-})
-
 function initChart() {
   if (!chartRef.value) return
-  const chart = echarts.init(chartRef.value)
-  chart.setOption({
+  chartInstance = echarts.init(chartRef.value)
+  if (calculated.value) updateChart()
+  window.addEventListener('resize', () => chartInstance && chartInstance.resize())
+}
+
+function updateChart() {
+  if (!chartInstance || !forecastResults.value.length) return
+  chartInstance.setOption({
     tooltip: { trigger: 'axis' },
     legend: { data: ['营业收入', '营业成本', '净利润'], top: 10 },
     grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
@@ -55,8 +72,11 @@ function initChart() {
       { name: '净利润', type: 'line', data: forecastResults.value.map(r => r.netProfit), smooth: true, itemStyle: { color: '#67c23a' }, lineStyle: { width: 2 } }
     ]
   })
-  window.addEventListener('resize', () => chart.resize())
 }
+
+onMounted(() => {
+  initChart()
+})
 </script>
 
 <template>
@@ -90,7 +110,7 @@ function initChart() {
               <el-input-number v-model="forecastForm.periods" :min="1" :max="20" style="width: 100%;" />
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" @click="handleCalculate">计算预测</el-button>
+              <el-button type="primary" @click="handleCalculate" :loading="calculating">计算预测</el-button>
               <el-button @click="handleSave">保存方案</el-button>
             </el-form-item>
           </el-form>

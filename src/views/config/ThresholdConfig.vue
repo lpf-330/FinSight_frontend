@@ -1,14 +1,10 @@
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { getThresholds, updateThreshold, getDynamicSuggestion } from '../../api/config'
 
 const loading = ref(false)
-const thresholds = ref([
-  { id: 1, indicator: '流动比率', indicatorCode: 'R001', direction: 'lower', yellowValue: '< 2.0', orangeValue: '< 1.5', redValue: '< 1.0', dynamicBase: false, updateTime: '2026-04-10' },
-  { id: 2, indicator: '速动比率', indicatorCode: 'R002', direction: 'lower', yellowValue: '< 1.2', orangeValue: '< 1.0', redValue: '< 0.8', dynamicBase: false, updateTime: '2026-04-10' },
-  { id: 3, indicator: '现金比率', indicatorCode: 'R003', direction: 'lower', yellowValue: '< 0.3', orangeValue: '< 0.25', redValue: '< 0.2', dynamicBase: true, updateTime: '2026-04-12' },
-  { id: 4, indicator: '资产负债率', indicatorCode: 'R004', direction: 'upper', yellowValue: '> 50%', orangeValue: '> 60%', redValue: '> 70%', dynamicBase: false, updateTime: '2026-04-10' }
-])
+const thresholds = ref([])
 
 const dialogVisible = ref(false)
 const dialogTitle = ref('配置阈值')
@@ -23,29 +19,60 @@ const thresholdForm = reactive({
   dynamicBase: false
 })
 
+async function fetchThresholds() {
+  loading.value = true
+  try {
+    const res = await getThresholds()
+    thresholds.value = res.data || res || []
+  } catch (error) {
+    ElMessage.error('获取阈值列表失败')
+  } finally {
+    loading.value = false
+  }
+}
+
 function handleEdit(row) {
   dialogTitle.value = '配置阈值 - ' + row.indicator
   Object.assign(thresholdForm, { ...row })
   dialogVisible.value = true
 }
 
-function handleSave() {
+async function handleSave() {
   if (!thresholdForm.yellowValue || !thresholdForm.orangeValue || !thresholdForm.redValue) {
     ElMessage.warning('请填写完整的阈值配置')
     return
   }
-  ElMessage.success('阈值配置保存成功')
-  dialogVisible.value = false
+  try {
+    await updateThreshold(thresholdForm.id, { ...thresholdForm })
+    ElMessage.success('阈值配置保存成功')
+    dialogVisible.value = false
+    await fetchThresholds()
+  } catch (error) {
+    ElMessage.error('阈值配置保存失败')
+  }
 }
 
-function handleDynamicSuggestion() {
-  ElMessage.info('正在计算动态基准建议值...')
-  setTimeout(() => {
+async function handleDynamicSuggestion() {
+  try {
+    ElMessage.info('正在计算动态基准建议值...')
+    const res = await getDynamicSuggestion(thresholdForm.indicatorCode)
+    const data = res.data || res
+    if (data) {
+      if (data.yellowValue) thresholdForm.yellowValue = data.yellowValue
+      if (data.orangeValue) thresholdForm.orangeValue = data.orangeValue
+      if (data.redValue) thresholdForm.redValue = data.redValue
+    }
     ElMessage.success('动态基准建议值已生成，请查看并确认')
-  }, 1000)
+  } catch (error) {
+    ElMessage.error('获取动态基准建议失败')
+  }
 }
 
 const directionLabel = { lower: '越低越差', upper: '越高越差' }
+
+onMounted(() => {
+  fetchThresholds()
+})
 </script>
 
 <template>

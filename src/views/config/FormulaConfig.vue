@@ -1,16 +1,10 @@
 <script setup>
-import { ref, reactive } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ref, reactive, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { getFormulas, createFormula, updateFormula, deleteFormula, validateFormula } from '../../api/config'
 
 const loading = ref(false)
-const formulas = ref([
-  { id: 1, name: '流动比率', expression: '流动资产 / 流动负债', category: '偿债能力', enabled: true, version: 'v1.3', updateTime: '2026-04-10' },
-  { id: 2, name: '速动比率', expression: '(流动资产 - 存货) / 流动负债', category: '偿债能力', enabled: true, version: 'v1.2', updateTime: '2026-04-10' },
-  { id: 3, name: '资产负债率', expression: '负债总额 / 资产总额 * 100', category: '偿债能力', enabled: true, version: 'v1.1', updateTime: '2026-03-15' },
-  { id: 4, name: '应收账款周转率', expression: '营业收入 / (应收账款期初 + 应收账款期末) / 2', category: '营运能力', enabled: true, version: 'v1.0', updateTime: '2026-01-20' },
-  { id: 5, name: '销售净利率', expression: '净利润 / 营业收入 * 100', category: '盈利能力', enabled: true, version: 'v1.0', updateTime: '2026-01-20' },
-  { id: 6, name: '营业收入增长率', expression: '(本期营业收入 - 上期营业收入) / 上期营业收入 * 100', category: '发展能力', enabled: true, version: 'v1.0', updateTime: '2026-01-20' }
-])
+const formulas = ref([])
 
 const dialogVisible = ref(false)
 const dialogTitle = ref('新增公式')
@@ -26,6 +20,18 @@ const categoryOptions = ['偿债能力', '营运能力', '盈利能力', '发展
 const subjectOptions = ['流动资产', '流动负债', '存货', '负债总额', '资产总额', '营业收入', '净利润', '应收账款', '总资产']
 const operatorOptions = ['+', '-', '*', '/', '(', ')', 'MAX', 'MIN', 'IF', 'ABS']
 
+async function fetchFormulas() {
+  loading.value = true
+  try {
+    const res = await getFormulas()
+    formulas.value = res.data || res || []
+  } catch (error) {
+    ElMessage.error('获取公式列表失败')
+  } finally {
+    loading.value = false
+  }
+}
+
 function handleAdd() {
   dialogTitle.value = '新增公式'
   Object.assign(formulaForm, { id: null, name: '', expression: '', category: '偿债能力', enabled: true })
@@ -38,26 +44,52 @@ function handleEdit(row) {
   dialogVisible.value = true
 }
 
-function handleDelete(row) {
-  formulas.value = formulas.value.filter(f => f.id !== row.id)
-  ElMessage.success('删除成功')
+async function handleDelete(row) {
+  try {
+    await ElMessageBox.confirm('确认删除该公式？', '提示', { type: 'warning' })
+    loading.value = true
+    await deleteFormula(row.id)
+    ElMessage.success('删除成功')
+    await fetchFormulas()
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('删除失败')
+    }
+  } finally {
+    loading.value = false
+  }
 }
 
-function handleSave() {
+async function handleSave() {
   if (!formulaForm.name || !formulaForm.expression) {
     ElMessage.warning('请填写公式名称和表达式')
     return
   }
-  ElMessage.success('保存成功，已自动生成新版本')
-  dialogVisible.value = false
+  try {
+    if (formulaForm.id) {
+      await updateFormula(formulaForm.id, { ...formulaForm })
+    } else {
+      await createFormula({ ...formulaForm })
+    }
+    ElMessage.success('保存成功，已自动生成新版本')
+    dialogVisible.value = false
+    await fetchFormulas()
+  } catch (error) {
+    ElMessage.error('保存失败')
+  }
 }
 
-function handleValidate() {
+async function handleValidate() {
   if (!formulaForm.expression) {
     ElMessage.warning('请输入表达式')
     return
   }
-  ElMessage.success('表达式语法验证通过')
+  try {
+    await validateFormula({ expression: formulaForm.expression })
+    ElMessage.success('表达式语法验证通过')
+  } catch (error) {
+    ElMessage.error('表达式语法验证失败')
+  }
 }
 
 function insertSubject(subject) {
@@ -67,6 +99,10 @@ function insertSubject(subject) {
 function insertOperator(op) {
   formulaForm.expression += ` ${op} `
 }
+
+onMounted(() => {
+  fetchFormulas()
+})
 </script>
 
 <template>

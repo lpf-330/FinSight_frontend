@@ -1,14 +1,10 @@
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { getKnowledgeList, createKnowledge, updateKnowledge, deleteKnowledge, exportKnowledge, importKnowledge } from '../../api/config'
 
 const loading = ref(false)
-const knowledgeList = ref([
-  { id: 1, indicator: '流动比率', level: 'yellow', content: '建议优化短期偿债能力：1) 加快应收账款回收；2) 合理安排短期负债到期结构；3) 适当增加流动资产储备。', version: 'v2.1', usefulCount: 15, uselessCount: 2, updateTime: '2026-04-15' },
-  { id: 2, indicator: '流动比率', level: 'orange', content: '流动比率偏低，需重点关注：1) 审查短期借款用途和必要性；2) 加速存货周转；3) 考虑长期融资替代短期负债。', version: 'v2.0', usefulCount: 8, uselessCount: 1, updateTime: '2026-04-15' },
-  { id: 3, indicator: '流动比率', level: 'red', content: '流动比率严重不足，需立即行动：1) 启动紧急融资方案；2) 出售非核心资产；3) 与银行协商展期；4) 暂停非必要支出。', version: 'v2.0', usefulCount: 5, uselessCount: 0, updateTime: '2026-04-15' },
-  { id: 4, indicator: '现金比率', level: 'red', content: '现金比率严重不足，需立即加强现金管理：1) 加速应收款催收；2) 延长应付款账期；3) 考虑短期融资；4) 建立最低现金储备制度。', version: 'v1.3', usefulCount: 12, uselessCount: 1, updateTime: '2026-04-12' }
-])
+const knowledgeList = ref([])
 
 const dialogVisible = ref(false)
 const dialogTitle = ref('新增建议')
@@ -26,6 +22,18 @@ const levelOptions = [
   { label: '红色预警', value: 'red' }
 ]
 
+async function fetchKnowledgeList() {
+  loading.value = true
+  try {
+    const res = await getKnowledgeList()
+    knowledgeList.value = res.data || res || []
+  } catch (error) {
+    ElMessage.error('获取知识库列表失败')
+  } finally {
+    loading.value = false
+  }
+}
+
 function handleAdd() {
   dialogTitle.value = '新增建议'
   Object.assign(knowledgeForm, { id: null, indicator: '', level: 'yellow', content: '' })
@@ -38,34 +46,83 @@ function handleEdit(row) {
   dialogVisible.value = true
 }
 
-function handleDelete(row) {
-  ElMessageBox.confirm('确认删除该建议？', '提示', { type: 'warning' })
-    .then(() => {
-      knowledgeList.value = knowledgeList.value.filter(k => k.id !== row.id)
-      ElMessage.success('删除成功')
-    })
-    .catch(() => {})
+async function handleDelete(row) {
+  try {
+    await ElMessageBox.confirm('确认删除该建议？', '提示', { type: 'warning' })
+    loading.value = true
+    await deleteKnowledge(row.id)
+    ElMessage.success('删除成功')
+    await fetchKnowledgeList()
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('删除失败')
+    }
+  } finally {
+    loading.value = false
+  }
 }
 
-function handleSave() {
+async function handleSave() {
   if (!knowledgeForm.indicator || !knowledgeForm.content) {
     ElMessage.warning('请填写预警指标和建议内容')
     return
   }
-  ElMessage.success('保存成功')
-  dialogVisible.value = false
+  try {
+    if (knowledgeForm.id) {
+      await updateKnowledge(knowledgeForm.id, { ...knowledgeForm })
+    } else {
+      await createKnowledge({ ...knowledgeForm })
+    }
+    ElMessage.success('保存成功')
+    dialogVisible.value = false
+    await fetchKnowledgeList()
+  } catch (error) {
+    ElMessage.error('保存失败')
+  }
 }
 
-function handleExport() {
-  ElMessage.success('知识库导出成功')
+async function handleExport() {
+  try {
+    const res = await exportKnowledge()
+    const blob = new Blob([res], { type: 'application/octet-stream' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'knowledge_export.xlsx'
+    link.click()
+    window.URL.revokeObjectURL(url)
+    ElMessage.success('知识库导出成功')
+  } catch (error) {
+    ElMessage.error('导出失败')
+  }
 }
 
-function handleImport() {
-  ElMessage.info('请选择导入文件')
+async function handleImport() {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.xlsx,.xls,.csv'
+  input.onchange = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    const formData = new FormData()
+    formData.append('file', file)
+    try {
+      await importKnowledge(formData)
+      ElMessage.success('导入成功')
+      await fetchKnowledgeList()
+    } catch (error) {
+      ElMessage.error('导入失败')
+    }
+  }
+  input.click()
 }
 
 const levelTagType = { yellow: 'warning', orange: 'danger', red: 'danger' }
 const levelLabel = { yellow: '黄色', orange: '橙色', red: '红色' }
+
+onMounted(() => {
+  fetchKnowledgeList()
+})
 </script>
 
 <template>

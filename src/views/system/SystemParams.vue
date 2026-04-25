@@ -1,54 +1,98 @@
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { getSystemParams, updateSystemParams } from '../../api/system'
 
 const loading = ref(false)
 const activeTab = ref('general')
 
-const generalParams = ref([
-  { id: 1, key: 'system.name', value: 'FinSight财务智能分析系统', description: '系统名称', editable: true },
-  { id: 2, key: 'system.version', value: '1.0.0', description: '系统版本', editable: false },
-  { id: 3, key: 'etl.cron', value: '0 0 2 * * ?', description: 'ETL定时执行Cron表达式', editable: true },
-  { id: 4, key: 'etl.timeout', value: '3600', description: 'ETL任务超时时间(秒)', editable: true },
-  { id: 5, key: 'warning.auto_notify', value: 'true', description: '预警自动通知', editable: true },
-  { id: 6, key: 'warning.notify_email', value: 'finance@company.com', description: '预警通知邮箱', editable: true },
-  { id: 7, key: 'report.max_history', value: '100', description: '报告最大保留数量', editable: true },
-  { id: 8, key: 'data.retention_days', value: '365', description: '数据保留天数', editable: true }
-])
+const generalParams = ref([])
 
 const emailParams = reactive({
-  smtpHost: 'smtp.company.com',
-  smtpPort: '465',
-  sender: 'finsight@company.com',
-  username: 'finsight@company.com',
-  password: '********',
+  smtpHost: '',
+  smtpPort: '',
+  sender: '',
+  username: '',
+  password: '',
   sslEnabled: true
 })
 
 const emailTestResult = ref(null)
 
-function handleSaveGeneral() {
-  ElMessage.success('系统参数保存成功')
+onMounted(() => {
+  fetchSystemParams()
+})
+
+async function fetchSystemParams() {
+  loading.value = true
+  try {
+    const res = await getSystemParams()
+    const data = res.data || res
+    if (data.general) {
+      generalParams.value = data.general
+    }
+    if (data.email) {
+      Object.assign(emailParams, data.email)
+    }
+  } catch (error) {
+    ElMessage.error('获取系统参数失败')
+    console.error(error)
+  } finally {
+    loading.value = false
+  }
 }
 
-function handleSaveEmail() {
-  ElMessage.success('邮件配置保存成功')
+async function handleSaveGeneral() {
+  try {
+    await updateSystemParams({ general: generalParams.value })
+    ElMessage.success('系统参数保存成功')
+  } catch (error) {
+    ElMessage.error('系统参数保存失败')
+    console.error(error)
+  }
 }
 
-function handleTestEmail() {
+async function handleSaveEmail() {
+  try {
+    await updateSystemParams({ email: { ...emailParams } })
+    ElMessage.success('邮件配置保存成功')
+  } catch (error) {
+    ElMessage.error('邮件配置保存失败')
+    console.error(error)
+  }
+}
+
+async function handleTestEmail() {
   emailTestResult.value = null
-  setTimeout(() => {
+  try {
+    await updateSystemParams({ email: { ...emailParams }, testEmail: true })
     emailTestResult.value = { success: true, message: '测试邮件发送成功，请检查收件箱' }
     ElMessage.success('测试邮件发送成功')
-  }, 1500)
+  } catch (error) {
+    emailTestResult.value = { success: false, message: '测试邮件发送失败，请检查配置' }
+    ElMessage.error('测试邮件发送失败')
+    console.error(error)
+  }
 }
 
-function handleClearCache() {
-  ElMessage.success('缓存清理成功')
+async function handleClearCache() {
+  try {
+    await updateSystemParams({ action: 'clearCache' })
+    ElMessage.success('缓存清理成功')
+  } catch (error) {
+    ElMessage.error('缓存清理失败')
+    console.error(error)
+  }
 }
 
-function handleExportConfig() {
-  ElMessage.success('配置导出成功')
+async function handleExportConfig() {
+  try {
+    await updateSystemParams({ action: 'exportConfig' })
+    ElMessage.success('配置导出成功')
+  } catch (error) {
+    ElMessage.error('配置导出失败')
+    console.error(error)
+  }
 }
 </script>
 

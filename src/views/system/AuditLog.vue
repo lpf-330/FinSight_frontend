@@ -1,37 +1,91 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { getAuditLogs, exportAuditLogs } from '../../api/system'
 
 const loading = ref(false)
 const dateRange = ref([])
 const filterUser = ref('')
 const filterType = ref('')
+const total = ref(0)
+const pageSize = ref(10)
+const currentPage = ref(1)
 
-const auditLogs = ref([
-  { id: 1, user: '张三', operation: '数据导入', module: '数据接入', detail: '导入资产负债表_2026Q1.xlsx', ip: '192.168.1.50', time: '2026-04-24 14:30:00' },
-  { id: 2, user: '张三', operation: '配置修改', module: '配置管理', detail: '修改流动比率预警阈值', ip: '192.168.1.50', time: '2026-04-24 11:20:00' },
-  { id: 3, user: 'admin', operation: '用户管理', module: '系统支撑', detail: '新增用户: 赵六', ip: '192.168.1.10', time: '2026-04-24 10:00:00' },
-  { id: 4, user: '李四', operation: '数据导入', module: '数据接入', detail: '导入利润表_2026Q1.xlsx（失败）', ip: '192.168.1.55', time: '2026-04-23 16:45:00' },
-  { id: 5, user: '张三', operation: '报告生成', module: '可视化报表', detail: '生成2026年Q1财务分析报告', ip: '192.168.1.50', time: '2026-04-23 15:30:00' },
-  { id: 6, user: 'admin', operation: '权限变更', module: '系统支撑', detail: '修改角色"财务分析人员"的权限', ip: '192.168.1.10', time: '2026-04-22 09:15:00' },
-  { id: 7, user: '张三', operation: '公式修改', module: '配置管理', detail: '新增现金比率公式(v1.3)', ip: '192.168.1.50', time: '2026-04-20 14:10:00' },
-  { id: 8, user: 'admin', operation: 'ETL操作', module: '数据接入', detail: '手动触发ETL任务', ip: '192.168.1.10', time: '2026-04-20 08:00:00' }
-])
+const auditLogs = ref([])
 
 const operationTypes = ['数据导入', '配置修改', '用户管理', '权限变更', '报告生成', '公式修改', 'ETL操作']
 
-function handleSearch() {
-  ElMessage.info('筛选日志')
+onMounted(() => {
+  fetchAuditLogs()
+})
+
+async function fetchAuditLogs() {
+  loading.value = true
+  try {
+    const params = {
+      page: currentPage.value,
+      pageSize: pageSize.value,
+      startDate: dateRange.value?.[0] || '',
+      endDate: dateRange.value?.[1] || '',
+      user: filterUser.value,
+      type: filterType.value
+    }
+    const res = await getAuditLogs(params)
+    const data = res.data || res
+    auditLogs.value = data.list || data.records || data || []
+    total.value = data.total || 0
+  } catch (error) {
+    ElMessage.error('获取审计日志失败')
+    console.error(error)
+  } finally {
+    loading.value = false
+  }
 }
 
-function handleExport() {
-  ElMessage.success('审计日志导出成功')
+async function handleSearch() {
+  currentPage.value = 1
+  await fetchAuditLogs()
+}
+
+async function handleExport() {
+  try {
+    const params = {
+      startDate: dateRange.value?.[0] || '',
+      endDate: dateRange.value?.[1] || '',
+      user: filterUser.value,
+      type: filterType.value
+    }
+    const res = await exportAuditLogs(params)
+    const blob = new Blob([res.data || res], { type: 'text/csv' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = '审计日志.csv'
+    link.click()
+    window.URL.revokeObjectURL(url)
+    ElMessage.success('审计日志导出成功')
+  } catch (error) {
+    ElMessage.error('导出审计日志失败')
+    console.error(error)
+  }
 }
 
 function handleReset() {
   dateRange.value = []
   filterUser.value = ''
   filterType.value = ''
+  currentPage.value = 1
+  fetchAuditLogs()
+}
+
+function handleSizeChange(val) {
+  pageSize.value = val
+  fetchAuditLogs()
+}
+
+function handlePageChange(val) {
+  currentPage.value = val
+  fetchAuditLogs()
 }
 </script>
 
@@ -77,9 +131,12 @@ function handleReset() {
         <el-pagination
           background
           layout="total, sizes, prev, pager, next, jumper"
-          :total="8"
+          :total="total"
           :page-sizes="[10, 20, 50]"
-          :page-size="10"
+          :page-size="pageSize"
+          :current-page="currentPage"
+          @size-change="handleSizeChange"
+          @current-change="handlePageChange"
         />
       </div>
     </div>

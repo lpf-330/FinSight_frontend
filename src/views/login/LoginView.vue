@@ -2,6 +2,7 @@
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../../stores/user'
+import { login as loginApi, getUserInfo as getUserInfoApi } from '../../api/auth'
 import { ElMessage } from 'element-plus'
 
 const router = useRouter()
@@ -26,16 +27,20 @@ async function handleLogin() {
 
   loading.value = true
   try {
-    userStore.setToken('mock-token-' + Date.now())
+    const res = await loginApi({ username: loginForm.username, password: loginForm.password })
+    const token = res.data?.token || res.token
+    userStore.setToken(token)
+    const infoRes = await getUserInfoApi()
+    const userInfo = infoRes.data || infoRes
     userStore.setUserInfo({
-      username: loginForm.username,
-      roles: ['admin'],
-      name: loginForm.username
+      username: userInfo.username || loginForm.username,
+      roles: userInfo.roles || ['ANALYST'],
+      name: userInfo.name || loginForm.username
     })
     ElMessage.success('登录成功')
     router.push('/dashboard')
   } catch (e) {
-    ElMessage.error('登录失败，请检查用户名和密码')
+    ElMessage.error(e.message || '登录失败，请检查用户名和密码')
   } finally {
     loading.value = false
   }

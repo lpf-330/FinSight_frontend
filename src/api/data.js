@@ -54,3 +54,7 @@ export function updateSubjectMapping(id, data) {
 export function deleteSubjectMapping(id) {
   return request.delete(`/data/mapping/${id}`)
 }
+
+export function getImportHistory(params) {
+  return request.get('/data/import/history', { params })
+}

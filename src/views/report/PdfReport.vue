@@ -1,13 +1,10 @@
 <script setup>
-import { ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ref, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { getPdfReportHistory, generatePdfReport } from '../../api/report'
 
 const loading = ref(false)
-const reportHistory = ref([
-  { id: 1, name: '2026年Q1财务分析报告', type: '综合分析', period: '2026-Q1', status: 'completed', createTime: '2026-04-20 15:30', fileSize: '2.8MB', creator: '张三' },
-  { id: 2, name: '2026年3月预警报告', type: '预警报告', period: '2026-03', status: 'completed', createTime: '2026-04-15 10:20', fileSize: '1.2MB', creator: '张三' },
-  { id: 3, name: '投资测算方案-新产线', type: '投资评估', period: '-', status: 'completed', createTime: '2026-04-12 16:45', fileSize: '0.8MB', creator: '李四' }
-])
+const reportHistory = ref([])
 
 const generating = ref(false)
 const reportForm = ref({
@@ -26,25 +23,77 @@ const typeOptions = [
   { label: '投资评估报告', value: 'investment' }
 ]
 
-function handleGenerate() {
+onMounted(() => {
+  fetchReportHistory()
+})
+
+async function fetchReportHistory() {
+  loading.value = true
+  try {
+    const res = await getPdfReportHistory()
+    reportHistory.value = res.data || res || []
+  } catch (error) {
+    ElMessage.error('获取报告历史失败')
+    console.error(error)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function handleGenerate() {
   if (!reportForm.value.name) {
     ElMessage.warning('请输入报告名称')
     return
   }
   generating.value = true
-  setTimeout(() => {
-    generating.value = false
+  try {
+    const res = await generatePdfReport(reportForm.value)
+    const blob = new Blob([res.data || res], { type: 'application/pdf' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${reportForm.value.name}.pdf`
+    link.click()
+    window.URL.revokeObjectURL(url)
     ElMessage.success('PDF报告生成成功，正在下载...')
-  }, 2000)
+    fetchReportHistory()
+  } catch (error) {
+    ElMessage.error('PDF报告生成失败')
+    console.error(error)
+  } finally {
+    generating.value = false
+  }
 }
 
 function handleDownload(row) {
-  ElMessage.success(`正在下载: ${row.name}`)
+  if (row.status !== 'completed') {
+    ElMessage.warning('报告尚未生成完成，无法下载')
+    return
+  }
+  try {
+    generatePdfReport({ id: row.id, download: true }).then(res => {
+      const blob = new Blob([res.data || res], { type: 'application/pdf' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${row.name}.pdf`
+      link.click()
+      window.URL.revokeObjectURL(url)
+      ElMessage.success(`正在下载: ${row.name}`)
+    })
+  } catch (error) {
+    ElMessage.error('下载报告失败')
+    console.error(error)
+  }
 }
 
 function handleDelete(row) {
-  reportHistory.value = reportHistory.value.filter(r => r.id !== row.id)
-  ElMessage.success('删除成功')
+  ElMessageBox.confirm(`确认删除报告"${row.name}"？`, '提示', { type: 'warning' })
+    .then(() => {
+      reportHistory.value = reportHistory.value.filter(r => r.id !== row.id)
+      ElMessage.success('删除成功')
+    })
+    .catch(() => {})
 }
 
 const statusLabel = { completed: '已完成', generating: '生成中', failed: '生成失败' }

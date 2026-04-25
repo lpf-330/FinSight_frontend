@@ -1,6 +1,7 @@
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { calcInvestment, saveInvestmentScheme, getInvestmentSchemes } from '../../api/algorithm'
 
 const investForm = reactive({
   projectName: '',
@@ -16,13 +17,15 @@ const investForm = reactive({
 })
 
 const calcResults = ref({
-  npv: 215.68,
-  irr: 14.52,
-  staticPayback: 3.43,
-  dynamicPayback: 4.12
+  npv: null,
+  irr: null,
+  staticPayback: null,
+  dynamicPayback: null
 })
 
-const calculated = ref(true)
+const calculated = ref(false)
+const calculating = ref(false)
+const schemes = ref([])
 
 function addCashFlow() {
   const lastYear = investForm.cashFlows[investForm.cashFlows.length - 1]?.year || 0
@@ -41,7 +44,7 @@ function removeCashFlow(index) {
   investForm.cashFlows.splice(index, 1)
 }
 
-function handleCalculate() {
+async function handleCalculate() {
   if (!investForm.projectName) {
     ElMessage.warning('请输入项目名称')
     return
@@ -50,16 +53,51 @@ function handleCalculate() {
     ElMessage.warning('折现率不能为负数')
     return
   }
-  calculated.value = true
-  ElMessage.success('计算完成')
+  calculating.value = true
+  try {
+    const res = await calcInvestment({
+      projectName: investForm.projectName,
+      initialInvestment: investForm.initialInvestment,
+      discountRate: investForm.discountRate,
+      cashFlows: investForm.cashFlows
+    })
+    calcResults.value = res.data || {}
+    calculated.value = true
+    ElMessage.success('计算完成')
+  } catch (err) {
+    ElMessage.error('计算失败: ' + (err.message || '未知错误'))
+  } finally {
+    calculating.value = false
+  }
 }
 
-function handleSave() {
-  ElMessage.success('测算方案已保存')
+async function handleSave() {
+  try {
+    await saveInvestmentScheme({
+      projectName: investForm.projectName,
+      initialInvestment: investForm.initialInvestment,
+      discountRate: investForm.discountRate,
+      cashFlows: investForm.cashFlows,
+      results: calcResults.value
+    })
+    ElMessage.success('测算方案已保存')
+    await fetchSchemes()
+  } catch (err) {
+    ElMessage.error('保存方案失败: ' + (err.message || '未知错误'))
+  }
 }
 
 function handleExport() {
   ElMessage.info('正在生成PDF报告...')
+}
+
+async function fetchSchemes() {
+  try {
+    const res = await getInvestmentSchemes()
+    schemes.value = res.data || []
+  } catch (err) {
+    ElMessage.error('获取方案列表失败: ' + (err.message || '未知错误'))
+  }
 }
 
 const discountTable = computed(() => {
@@ -80,6 +118,10 @@ const discountTable = computed(() => {
       cumulativeDiscounted: cumulativeDiscounted.toFixed(2)
     }
   })
+})
+
+onMounted(() => {
+  fetchSchemes()
 })
 </script>
 
@@ -119,7 +161,7 @@ const discountTable = computed(() => {
               </div>
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" @click="handleCalculate">计算</el-button>
+              <el-button type="primary" @click="handleCalculate" :loading="calculating">计算</el-button>
               <el-button @click="handleSave">保存方案</el-button>
               <el-button @click="handleExport" :disabled="!calculated">导出报告</el-button>
             </el-form-item>

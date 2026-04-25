@@ -1,54 +1,73 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { getVersions, simulateVersion, switchVersion } from '../../api/config'
 
 const loading = ref(false)
 const modelType = ref('ratio')
-const versions = ref([
-  { id: 1, modelType: 'ratio', version: 'v1.3', description: '新增现金比率公式，修正速动比率计算逻辑', creator: '张三', createTime: '2026-04-10 14:30', isActive: true },
-  { id: 2, modelType: 'ratio', version: 'v1.2', description: '优化存货周转率公式，支持平均余额计算', creator: '张三', createTime: '2026-03-15 10:00', isActive: false },
-  { id: 3, modelType: 'ratio', version: 'v1.1', description: '修正资产负债率公式', creator: '李四', createTime: '2026-02-20 16:45', isActive: false },
-  { id: 4, modelType: 'ratio', version: 'v1.0', description: '初始版本，包含基础比率公式', creator: '李四', createTime: '2026-01-15 09:00', isActive: false },
-  { id: 5, modelType: 'warning', version: 'v2.0', description: '调整流动比率阈值，新增现金比率预警', creator: '张三', createTime: '2026-04-12 11:20', isActive: true },
-  { id: 6, modelType: 'warning', version: 'v1.0', description: '初始预警阈值配置', creator: '李四', createTime: '2026-01-15 09:00', isActive: false }
-])
-
-const filteredVersions = ref(versions.value.filter(v => v.modelType === 'ratio'))
+const versions = ref([])
+const filteredVersions = ref([])
 const simulateDialogVisible = ref(false)
 const simulateResult = ref(null)
+
+async function fetchVersions() {
+  loading.value = true
+  try {
+    const res = await getVersions()
+    versions.value = res.data || res || []
+    filteredVersions.value = versions.value.filter(v => v.modelType === modelType.value)
+  } catch (error) {
+    ElMessage.error('获取版本列表失败')
+  } finally {
+    loading.value = false
+  }
+}
 
 function handleModelTypeChange() {
   filteredVersions.value = versions.value.filter(v => v.modelType === modelType.value)
 }
 
-function handleSimulate(row) {
-  simulateDialogVisible.value = true
-  simulateResult.value = {
-    version: row.version,
-    differences: [
-      { indicator: '流动比率', currentResult: 1.85, simulatedResult: 1.82, diff: -0.03 },
-      { indicator: '速动比率', currentResult: 0.92, simulatedResult: 0.95, diff: 0.03 },
-      { indicator: '资产负债率', currentResult: 45.3, simulatedResult: 45.3, diff: 0 }
-    ]
+async function handleSimulate(row) {
+  try {
+    loading.value = true
+    const res = await simulateVersion({ versionId: row.id, modelType: row.modelType })
+    const data = res.data || res
+    simulateResult.value = {
+      version: row.version,
+      differences: data.differences || []
+    }
+    simulateDialogVisible.value = true
+  } catch (error) {
+    ElMessage.error('模拟计算失败')
+  } finally {
+    loading.value = false
   }
 }
 
-function handleSwitchVersion(row) {
-  ElMessageBox.confirm(`确认将版本"${row.version}"切换为当前版本？切换后需要重新触发全量计算。`, '切换版本', { type: 'warning' })
-    .then(() => {
-      versions.value.forEach(v => {
-        if (v.modelType === row.modelType) v.isActive = v.id === row.id
-      })
-      handleModelTypeChange()
-      ElMessage.success('版本切换成功')
-    })
-    .catch(() => {})
+async function handleSwitchVersion(row) {
+  try {
+    await ElMessageBox.confirm(`确认将版本"${row.version}"切换为当前版本？切换后需要重新触发全量计算。`, '切换版本', { type: 'warning' })
+    loading.value = true
+    await switchVersion({ versionId: row.id, modelType: row.modelType })
+    ElMessage.success('版本切换成功')
+    await fetchVersions()
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('版本切换失败')
+    }
+  } finally {
+    loading.value = false
+  }
 }
 
 const modelTypeOptions = [
   { label: '比率模型', value: 'ratio' },
   { label: '预警模型', value: 'warning' }
 ]
+
+onMounted(() => {
+  fetchVersions()
+})
 </script>
 
 <template>

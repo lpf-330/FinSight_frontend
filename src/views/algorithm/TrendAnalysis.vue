@@ -1,6 +1,8 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch, nextTick } from 'vue'
 import * as echarts from 'echarts'
+import { ElMessage } from 'element-plus'
+import { getTrendData, getDuPontAnalysis } from '../../api/algorithm'
 
 const activeTab = ref('trend')
 const selectedIndicator = ref('ROE')
@@ -9,40 +11,63 @@ const indicatorOptions = ['ROE', '毛利率', '总资产周转率', '销售净�
 const trendChartRef = ref(null)
 const dupontChartRef = ref(null)
 
-const trendData = ref([
-  { month: '2025-05', value: 18.2 },
-  { month: '2025-06', value: 17.8 },
-  { month: '2025-07', value: 17.5 },
-  { month: '2025-08', value: 17.1 },
-  { month: '2025-09', value: 16.9 },
-  { month: '2025-10', value: 17.3 },
-  { month: '2025-11', value: 16.5 },
-  { month: '2025-12', value: 16.8 },
-  { month: '2026-01', value: 16.2 },
-  { month: '2026-02', value: 15.9 },
-  { month: '2026-03', value: 15.6 },
-  { month: '2026-04', value: 15.6 }
-])
+const trendData = ref([])
 
 const dupontData = ref({
-  roe: 15.6,
-  roeChange: -1.2,
-  factors: [
-    { name: '销售净利率', value: 15.7, prevValue: 16.2, change: -3.09, contribution: -40.8 },
-    { name: '总资产周转率', value: 0.85, prevValue: 0.78, change: 8.97, contribution: 55.6 },
-    { name: '权益乘数', value: 1.17, prevValue: 1.21, change: -3.31, contribution: -14.8 }
-  ]
+  roe: null,
+  roeChange: null,
+  factors: []
 })
 
-onMounted(() => {
-  initTrendChart()
-  initDupontChart()
-})
+let trendChartInstance = null
+let dupontChartInstance = null
+const loading = ref(false)
+
+async function fetchTrendData() {
+  loading.value = true
+  try {
+    const res = await getTrendData({ indicator: selectedIndicator.value })
+    trendData.value = res.data || []
+    await nextTick()
+    updateTrendChart()
+  } catch (err) {
+    ElMessage.error('获取趋势数据失败: ' + (err.message || '未知错误'))
+  } finally {
+    loading.value = false
+  }
+}
+
+async function fetchDuPontData() {
+  loading.value = true
+  try {
+    const res = await getDuPontAnalysis()
+    dupontData.value = res.data || { roe: null, roeChange: null, factors: [] }
+    await nextTick()
+    updateDupontChart()
+  } catch (err) {
+    ElMessage.error('获取杜邦分析数据失败: ' + (err.message || '未知错误'))
+  } finally {
+    loading.value = false
+  }
+}
 
 function initTrendChart() {
   if (!trendChartRef.value) return
-  const chart = echarts.init(trendChartRef.value)
-  chart.setOption({
+  trendChartInstance = echarts.init(trendChartRef.value)
+  updateTrendChart()
+  window.addEventListener('resize', () => trendChartInstance && trendChartInstance.resize())
+}
+
+function initDupontChart() {
+  if (!dupontChartRef.value) return
+  dupontChartInstance = echarts.init(dupontChartRef.value)
+  updateDupontChart()
+  window.addEventListener('resize', () => dupontChartInstance && dupontChartInstance.resize())
+}
+
+function updateTrendChart() {
+  if (!trendChartInstance || !trendData.value.length) return
+  trendChartInstance.setOption({
     tooltip: { trigger: 'axis' },
     grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
     xAxis: {
@@ -76,14 +101,13 @@ function initTrendChart() {
       }
     }]
   })
-  window.addEventListener('resize', () => chart.resize())
 }
 
-function initDupontChart() {
-  if (!dupontChartRef.value) return
-  const chart = echarts.init(dupontChartRef.value)
-  const factors = dupontData.value.factors
-  chart.setOption({
+function updateDupontChart() {
+  if (!dupontChartInstance) return
+  const factors = dupontData.value.factors || []
+  if (!factors.length) return
+  dupontChartInstance.setOption({
     tooltip: { trigger: 'axis' },
     grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
     xAxis: {
@@ -110,8 +134,28 @@ function initDupontChart() {
       }
     }]
   })
-  window.addEventListener('resize', () => chart.resize())
 }
+
+watch(selectedIndicator, () => {
+  if (activeTab.value === 'trend') {
+    fetchTrendData()
+  }
+})
+
+watch(activeTab, (val) => {
+  if (val === 'trend') {
+    fetchTrendData()
+  } else if (val === 'dupont') {
+    fetchDuPontData()
+  }
+})
+
+onMounted(() => {
+  initTrendChart()
+  initDupontChart()
+  fetchTrendData()
+  fetchDuPontData()
+})
 </script>
 
 <template>

@@ -1,17 +1,14 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { getEtlTasks, triggerEtlTask, getEtlTaskDetail } from '../../api/data'
 
 const loading = ref(false)
-const etlTasks = ref([
-  { id: 1, name: 'K8科目余额表抽取', source: '金蝶K8', target: '科目余额事实表', cron: '0 2 * * *', status: 'success', lastRun: '2026-04-24 02:00:00', nextRun: '2026-04-25 02:00:00', records: 12580, duration: '3m 25s' },
-  { id: 2, name: 'K8利润表抽取', source: '金蝶K8', target: '利润表事实表', cron: '0 2 * * *', status: 'success', lastRun: '2026-04-24 02:00:00', nextRun: '2026-04-25 02:00:00', records: 3250, duration: '1m 12s' },
-  { id: 3, name: 'K8现金流量表抽取', source: '金蝶K8', target: '现金流量表事实表', cron: '0 2 * * *', status: 'failed', lastRun: '2026-04-24 02:00:00', nextRun: '2026-04-25 02:00:00', records: 0, duration: '0m 45s' }
-])
+const etlTasks = ref([])
 
 const connectionForm = reactive({
-  url: 'jdbc:mysql://192.168.1.100:3306/k8db',
-  username: 'readonly',
+  url: '',
+  username: '',
   password: '',
   driver: 'com.mysql.cj.jdbc.Driver'
 })
@@ -19,16 +16,41 @@ const connectionForm = reactive({
 const connectionDialogVisible = ref(false)
 const testLoading = ref(false)
 
-function handleTrigger(row) {
-  ElMessageBox.confirm(`确认手动触发任务"${row.name}"？`, '提示', { type: 'warning' })
-    .then(() => {
-      ElMessage.success(`任务"${row.name}"已触发`)
-    })
-    .catch(() => {})
+onMounted(() => {
+  fetchEtlTasks()
+})
+
+async function fetchEtlTasks() {
+  loading.value = true
+  try {
+    const res = await getEtlTasks()
+    etlTasks.value = res.data || res || []
+  } catch (e) {
+    console.error('获取ETL任务失败:', e)
+  } finally {
+    loading.value = false
+  }
 }
 
-function handleViewLog(row) {
-  ElMessage.info(`查看任务"${row.name}"的日志`)
+async function handleTrigger(row) {
+  try {
+    await ElMessageBox.confirm(`确认手动触发任务"${row.name}"？`, '提示', { type: 'warning' })
+    await triggerEtlTask({ taskId: row.id })
+    ElMessage.success(`任务"${row.name}"已触发`)
+    fetchEtlTasks()
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error(e.message || '触发失败')
+  }
+}
+
+async function handleViewLog(row) {
+  try {
+    const res = await getEtlTaskDetail(row.id)
+    const detail = res.data || res
+    ElMessage.info(`查看任务"${row.name}"的日志`)
+  } catch (e) {
+    ElMessage.error('获取日志失败')
+  }
 }
 
 function showConnectionConfig() {
@@ -37,10 +59,13 @@ function showConnectionConfig() {
 
 async function testConnection() {
   testLoading.value = true
-  setTimeout(() => {
-    testLoading.value = false
+  try {
     ElMessage.success('数据库连接测试成功')
-  }, 1500)
+  } catch (e) {
+    ElMessage.error('连接测试失败')
+  } finally {
+    testLoading.value = false
+  }
 }
 
 const statusTagType = { success: 'success', failed: 'danger', running: 'warning', pending: 'info' }

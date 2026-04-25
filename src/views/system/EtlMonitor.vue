@@ -1,33 +1,80 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { getEtlMonitorData, manualTriggerEtl, stopEtlTask } from '../../api/system'
 
 const loading = ref(false)
-const etlTasks = ref([
-  { id: 1, name: 'K8科目余额表抽取', startTime: '2026-04-24 02:00:00', endTime: '2026-04-24 02:03:25', status: 'success', records: 12580, errorCount: 0, errorMessage: '', duration: '3m 25s' },
-  { id: 2, name: 'K8利润表抽取', startTime: '2026-04-24 02:00:00', endTime: '2026-04-24 02:01:12', status: 'success', records: 3250, errorCount: 0, errorMessage: '', duration: '1m 12s' },
-  { id: 3, name: 'K8现金流量表抽取', startTime: '2026-04-24 02:00:00', endTime: '2026-04-24 02:00:45', status: 'failed', records: 0, errorCount: 1, errorMessage: 'Connection timeout: K8数据库连接超时', duration: '0m 45s' },
-  { id: 4, name: 'K8科目余额表抽取', startTime: '2026-04-23 02:00:00', endTime: '2026-04-23 02:04:10', status: 'success', records: 12450, errorCount: 0, errorMessage: '', duration: '4m 10s' },
-  { id: 5, name: 'K8利润表抽取', startTime: '2026-04-23 02:00:00', endTime: '2026-04-23 02:01:30', status: 'success', records: 3180, errorCount: 0, errorMessage: '', duration: '1m 30s' },
-  { id: 6, name: 'K8现金流量表抽取', startTime: '2026-04-23 02:00:00', endTime: '2026-04-23 02:01:55', status: 'success', records: 2890, errorCount: 0, errorMessage: '', duration: '1m 55s' }
-])
+const etlTasks = ref([])
+const total = ref(0)
+const pageSize = ref(10)
+const currentPage = ref(1)
+
+const statCards = ref({
+  successCount: 0,
+  failedCount: 0,
+  totalRecords: 0,
+  avgDuration: ''
+})
 
 const logDialogVisible = ref(false)
 const currentLog = ref('')
 
+onMounted(() => {
+  fetchEtlMonitorData()
+})
+
+async function fetchEtlMonitorData() {
+  loading.value = true
+  try {
+    const res = await getEtlMonitorData({
+      page: currentPage.value,
+      pageSize: pageSize.value
+    })
+    const data = res.data || res
+    etlTasks.value = data.list || data.records || data.tasks || []
+    total.value = data.total || 0
+    if (data.stats) {
+      statCards.value = {
+        successCount: data.stats.successCount || 0,
+        failedCount: data.stats.failedCount || 0,
+        totalRecords: data.stats.totalRecords || 0,
+        avgDuration: data.stats.avgDuration || ''
+      }
+    }
+  } catch (error) {
+    ElMessage.error('获取ETL监控数据失败')
+    console.error(error)
+  } finally {
+    loading.value = false
+  }
+}
+
 function handleManualTrigger() {
   ElMessageBox.confirm('确认手动触发ETL任务？同一时间只能运行一个ETL任务。', '手动执行', { type: 'warning' })
-    .then(() => {
-      ElMessage.success('ETL任务已手动触发')
+    .then(async () => {
+      try {
+        await manualTriggerEtl()
+        ElMessage.success('ETL任务已手动触发')
+        fetchEtlMonitorData()
+      } catch (error) {
+        ElMessage.error('手动触发ETL任务失败')
+        console.error(error)
+      }
     })
     .catch(() => {})
 }
 
 function handleStop(row) {
   ElMessageBox.confirm('确认停止该任务？', '停止任务', { type: 'warning' })
-    .then(() => {
-      row.status = 'stopped'
-      ElMessage.success('任务已停止')
+    .then(async () => {
+      try {
+        await stopEtlTask(row.id)
+        ElMessage.success('任务已停止')
+        fetchEtlMonitorData()
+      } catch (error) {
+        ElMessage.error('停止任务失败')
+        console.error(error)
+      }
     })
     .catch(() => {})
 }
@@ -35,6 +82,16 @@ function handleStop(row) {
 function handleViewLog(row) {
   currentLog.value = row.errorMessage || `[INFO] ${row.startTime} - 任务开始执行\n[INFO] ${row.startTime} - 连接K8数据库...\n[INFO] ${row.startTime} - 开始抽取数据...\n${row.status === 'failed' ? '[ERROR] 连接超时\n[ERROR] 任务执行失败' : '[INFO] 数据抽取完成\n[INFO] 数据清洗完成\n[INFO] 数据加载完成\n[INFO] 任务执行成功'}\n[INFO] ${row.endTime} - 任务结束`
   logDialogVisible.value = true
+}
+
+function handleSizeChange(val) {
+  pageSize.value = val
+  fetchEtlMonitorData()
+}
+
+function handlePageChange(val) {
+  currentPage.value = val
+  fetchEtlMonitorData()
 }
 
 const statusTagType = { success: 'success', failed: 'danger', running: 'warning', stopped: 'info' }
@@ -58,7 +115,7 @@ const statusLabel = { success: '成功', failed: '失败', running: '运行中',
         </div>
         <div class="stat-info">
           <div class="stat-label">今日成功</div>
-          <div class="stat-value">2</div>
+          <div class="stat-value">{{ statCards.successCount }}</div>
         </div>
       </div>
       <div class="stat-card">
@@ -67,7 +124,7 @@ const statusLabel = { success: '成功', failed: '失败', running: '运行中',
         </div>
         <div class="stat-info">
           <div class="stat-label">今日失败</div>
-          <div class="stat-value">1</div>
+          <div class="stat-value">{{ statCards.failedCount }}</div>
         </div>
       </div>
       <div class="stat-card">
@@ -76,7 +133,7 @@ const statusLabel = { success: '成功', failed: '失败', running: '运行中',
         </div>
         <div class="stat-info">
           <div class="stat-label">今日抽取记录</div>
-          <div class="stat-value">15,830</div>
+          <div class="stat-value">{{ statCards.totalRecords.toLocaleString() }}</div>
         </div>
       </div>
       <div class="stat-card">
@@ -85,7 +142,7 @@ const statusLabel = { success: '成功', failed: '失败', running: '运行中',
         </div>
         <div class="stat-info">
           <div class="stat-label">平均耗时</div>
-          <div class="stat-value">2m 14s</div>
+          <div class="stat-value">{{ statCards.avgDuration }}</div>
         </div>
       </div>
     </div>
@@ -119,9 +176,12 @@ const statusLabel = { success: '成功', failed: '失败', running: '运行中',
         <el-pagination
           background
           layout="total, sizes, prev, pager, next"
-          :total="6"
+          :total="total"
           :page-sizes="[10, 20, 50]"
-          :page-size="10"
+          :page-size="pageSize"
+          :current-page="currentPage"
+          @size-change="handleSizeChange"
+          @current-change="handlePageChange"
         />
       </div>
     </div>
