@@ -277,11 +277,11 @@ report_dashboard_cache
 | category | ENUM('solvency','operating','profitability','growth') | NOT NULL | 分类 |
 | value | DECIMAL(18,4) | | 本期值 |
 | prev_value | DECIMAL(18,4) | | 上期值 |
-| change | DECIMAL(10,4) | | 环比变化(%) |
+| change_pct | DECIMAL(10,4) | | 环比变化(%) |
 | standard | VARCHAR(64) | | 参考标准 |
-| period | VARCHAR(16) | NOT NULL | 期间(如 2026-Q1) |
+| fiscal_period | VARCHAR(16) | NOT NULL | 期间(如 2026-Q1) |
 | calculated_at | DATETIME | NOT NULL DEFAULT CURRENT_TIMESTAMP | 计算时间 |
-| INDEX | | (period, category) | 复合索引 |
+| INDEX | | (fiscal_period, category) | 复合索引 |
 
 #### algo_warning_record 预警记录表
 
@@ -298,7 +298,7 @@ report_dashboard_cache
 | trend | VARCHAR(64) | | 趋势描述 |
 | suggestion | TEXT | | 调整建议 |
 | status | ENUM('active','ignored') | NOT NULL DEFAULT 'active' | 状态 |
-| period | VARCHAR(16) | NOT NULL | 期间 |
+| fiscal_period | VARCHAR(16) | NOT NULL | 期间 |
 | triggered_at | DATETIME | NOT NULL DEFAULT CURRENT_TIMESTAMP | 触发时间 |
 | INDEX | | (status, level) | 复合索引 |
 | INDEX | | (triggered_at DESC) | 时间索引 |
@@ -318,7 +318,7 @@ report_dashboard_cache
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
 | id | BIGINT | PK, AUTO_INCREMENT | 主键 |
-| period | VARCHAR(16) | NOT NULL | 期间 |
+| fiscal_period | VARCHAR(16) | NOT NULL | 期间 |
 | roe | DECIMAL(18,4) | | ROE值 |
 | roe_change | DECIMAL(10,4) | | ROE变化 |
 | factor_name | VARCHAR(64) | NOT NULL | 因子名称 |
@@ -327,7 +327,7 @@ report_dashboard_cache
 | factor_change | DECIMAL(10,4) | | 变化率(%) |
 | contribution | DECIMAL(10,4) | | 对ROE贡献度(%) |
 | calculated_at | DATETIME | NOT NULL DEFAULT CURRENT_TIMESTAMP | 计算时间 |
-| INDEX | | (period) | 期间索引 |
+| INDEX | | (fiscal_period) | 期间索引 |
 
 #### algo_investment_scheme 投资评估方案表
 
@@ -371,7 +371,7 @@ report_dashboard_cache
 | id | BIGINT | PK, AUTO_INCREMENT | 主键 |
 | name | VARCHAR(256) | NOT NULL | 报告名称 |
 | type | ENUM('comprehensive','warning','investment') | NOT NULL | 报告类型 |
-| period | VARCHAR(16) | | 分析期间 |
+| fiscal_period | VARCHAR(16) | | 分析期间 |
 | include_warning | TINYINT(1) | DEFAULT 0 | 包含预警信息 |
 | include_ratio | TINYINT(1) | DEFAULT 1 | 包含比率分析 |
 | include_trend | TINYINT(1) | DEFAULT 1 | 包含趋势图表 |
@@ -394,10 +394,10 @@ report_dashboard_cache
 | industry_avg | DECIMAL(18,4) | | 行业平均值 |
 | industry_best | DECIMAL(18,4) | | 行业优秀值 |
 | deviation | DECIMAL(10,4) | | 偏离度(%) |
-| period | VARCHAR(16) | NOT NULL | 期间 |
+| fiscal_period | VARCHAR(16) | NOT NULL | 期间 |
 | industry | VARCHAR(64) | | 行业名称 |
 | updated_at | DATETIME | NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP | 更新时间 |
-| INDEX | | (period, industry) | 复合索引 |
+| INDEX | | (fiscal_period, industry) | 复合索引 |
 
 #### report_dashboard_cache 仪表盘缓存表
 
@@ -406,7 +406,7 @@ report_dashboard_cache
 | id | BIGINT | PK, AUTO_INCREMENT | 主键 |
 | cache_key | VARCHAR(128) | UNIQUE, NOT NULL | 缓存键(如 dashboard_summary) |
 | cache_value | JSON | NOT NULL | 缓存数据 |
-| period | VARCHAR(16) | | 期间 |
+| fiscal_period | VARCHAR(16) | | 期间 |
 | updated_at | DATETIME | NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP | 更新时间 |
 
 ---
