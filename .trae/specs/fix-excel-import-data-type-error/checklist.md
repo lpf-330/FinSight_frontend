@@ -1,0 +1,4 @@
+- [x] fetchImportHistory 函数已修改，包含正确的数组提取逻辑
+- [x] 数据提取支持多种 API 响应格式（res.data.list, res.data, res）
+- [x] 添加了 Array.isArray 类型校验
+- [x] 错误处理时将 importHistory 设为空数组

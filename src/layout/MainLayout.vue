@@ -97,11 +97,11 @@ const breadcrumbItems = computed(() => {
   }))
 })
 
+// 使用简单的计算属性，避免复杂的 DOM 更新问题
 const defaultActive = computed(() => route.path)
 
-function handleMenuSelect(index) {
-  router.push(index)
-}
+// 菜单 key，确保组件在必要时重新渲染
+const menuKey = computed(() => appStore.sidebarCollapsed ? 'collapsed' : 'expanded')
 
 function handleLogout() {
   userStore.logout()
@@ -134,6 +134,8 @@ watch(
         background-color="#1d1e2c"
         text-color="#a3a6b7"
         active-text-color="#409eff"
+        :unique-opened="false"
+        :key="menuKey"
         router
         class="sidebar-menu"
       >

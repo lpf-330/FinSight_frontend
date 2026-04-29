@@ -29,9 +29,11 @@ onMounted(() => {
 async function fetchImportHistory() {
   try {
     const res = await getImportHistory()
-    importHistory.value = res.data || res || []
+    const rawData = res.data?.list ?? res.data ?? res
+    importHistory.value = Array.isArray(rawData) ? rawData : []
   } catch (e) {
     console.error('获取导入历史失败:', e)
+    importHistory.value = []
   }
 }
 
@@ -104,11 +106,15 @@ const statusLabel = { success: '成功', failed: '失败' }
           <div class="template-list">
             <div v-for="opt in typeOptions" :key="opt.value" class="template-item">
               <div class="template-info">
-                <el-icon size="20"><Document /></el-icon>
+                <el-icon size="20">
+                  <Document />
+                </el-icon>
                 <span>{{ opt.label }}模板</span>
               </div>
               <el-button type="primary" link @click="handleDownloadTemplate(opt.value)">
-                <el-icon><Download /></el-icon>
+                <el-icon>
+                  <Download />
+                </el-icon>
                 下载
               </el-button>
             </div>
@@ -131,16 +137,12 @@ const statusLabel = { success: '成功', failed: '失败' }
               </el-radio-group>
             </el-form-item>
             <el-form-item label="选择文件">
-              <el-upload
-                ref="uploadRef"
-                :http-request="handleCustomUpload"
-                :before-upload="beforeUpload"
-                :show-file-list="false"
-                accept=".xlsx,.xls"
-                drag
-              >
+              <el-upload ref="uploadRef" :http-request="handleCustomUpload" :before-upload="beforeUpload"
+                :show-file-list="false" accept=".xlsx,.xls" drag>
                 <div class="upload-area">
-                  <el-icon size="40" color="#c0c4cc"><UploadFilled /></el-icon>
+                  <el-icon size="40" color="#c0c4cc">
+                    <UploadFilled />
+                  </el-icon>
                   <p>将文件拖到此处，或<em>点击上传</em></p>
                   <p class="upload-tip">仅支持 .xlsx 格式，文件大小不超过 10MB</p>
                 </div>
