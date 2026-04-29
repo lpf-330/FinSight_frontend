@@ -57,6 +57,7 @@ async function handleCalculate() {
 }
 
 function getChangeClass(change) {
+  if (change == null) return ''
   return change >= 0 ? 'change-up' : 'change-down'
 }
 
@@ -131,10 +132,10 @@ onMounted(() => {
               </template>
             </el-table-column>
             <el-table-column prop="prevValue" label="上期值" width="100" align="right" />
-            <el-table-column prop="change" label="环比变化" width="120" align="right">
+            <el-table-column prop="changePct" label="环比变化" width="120" align="right">
               <template #default="{ row }">
-                <span :class="getChangeClass(row.change)">
-                  {{ row.change >= 0 ? '+' : '' }}{{ row.change.toFixed(2) }}%
+                <span :class="getChangeClass(row.changePct)">
+                  {{ row.changePct != null ? (row.changePct >= 0 ? '+' : '') + row.changePct.toFixed(2) + '%' : '-' }}
                 </span>
               </template>
             </el-table-column>

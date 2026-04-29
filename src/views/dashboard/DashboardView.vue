@@ -25,11 +25,37 @@ async function fetchDashboardData() {
   loading.value = true
   try {
     const res = await getDashboardData()
+    console.log('仪表盘 API 返回:', res)
     const data = res.data || res
-    indicatorCards.value = data.indicatorCards || []
-    warningList.value = data.warningList || []
+    console.log('解析后的数据:', data)
+    
+    // 转换字段名：change_pct -> change
+    if (data.indicatorCards) {
+      indicatorCards.value = data.indicatorCards.map(card => ({
+        ...card,
+        change: card.change_pct != null ? card.change_pct : card.change
+      }))
+    } else {
+      indicatorCards.value = []
+    }
+    
+    // 转换预警信息的字段名
+    if (data.warningList) {
+      console.log('原始 warningList:', data.warningList)
+      warningList.value = data.warningList.map(item => ({
+        ...item,
+        threshold: item.threshold || item.yellow_threshold || item.threshold_value,
+        suggestion: item.suggestion || item.advice || item.suggestion_text,
+        time: item.time || item.created_at || item.triggered_at
+      }))
+    } else {
+      warningList.value = []
+    }
+    
     revenueChartData.value = data.revenueChart || { months: [], revenue: [], profit: [] }
     ratioChartData.value = data.ratioChart || { months: [], currentRatio: [], quickRatio: [], cashRatio: [] }
+    console.log('处理后的 indicatorCards:', indicatorCards.value)
+    console.log('处理后的 warningList:', warningList.value)
   } catch (e) {
     console.error('获取仪表盘数据失败:', e)
   } finally {
@@ -128,6 +154,21 @@ function initRatioChart() {
   })
   window.addEventListener('resize', () => chart.resize())
 }
+
+function getChangeClass(change) {
+  if (change == null) return ''
+  return change >= 0 ? 'up' : 'down'
+}
+
+function getChangeIcon(change) {
+  if (change == null) return 'Minus'
+  return change >= 0 ? 'Top' : 'Bottom'
+}
+
+function formatChange(change) {
+  if (change == null) return '-'
+  return Math.abs(change).toFixed(1)
+}
 </script>
 
 <template>
@@ -140,9 +181,9 @@ function initRatioChart() {
         <div class="stat-info">
           <div class="stat-label">{{ card.label }}</div>
           <div class="stat-value">{{ card.value }}<span class="stat-unit" v-if="card.unit">{{ card.unit }}</span></div>
-          <div class="stat-change" :class="card.change >= 0 ? 'up' : 'down'">
-            <el-icon size="12"><component :is="card.change >= 0 ? 'Top' : 'Bottom'" /></el-icon>
-            {{ Math.abs(card.change) }}%
+          <div class="stat-change" :class="getChangeClass(card.change)">
+            <el-icon size="12"><component :is="getChangeIcon(card.change)" /></el-icon>
+            {{ formatChange(card.change) }}%
           </div>
         </div>
       </div>
